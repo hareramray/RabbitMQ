@@ -1,0 +1,81 @@
+name: rabbitmq-course
+
+x-app: &app
+  build: .
+  working_dir: /app
+  environment:
+    BROKER_URL: amqp://student:student-local-only@rabbitmq:5672/learning
+    CELERY_BROKER_URL: amqp://student:student-local-only@rabbitmq:5672/learning
+    POSTGRES_DB: course
+    POSTGRES_USER: course
+    POSTGRES_PASSWORD: course-local-only
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: "5432"
+    DJANGO_DEBUG: "1"
+    DJANGO_SECRET_KEY: local-learning-only-change-before-deployment
+  depends_on:
+    rabbitmq:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+
+services:
+  rabbitmq:
+    image: rabbitmq:4.2.9-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: student
+      RABBITMQ_DEFAULT_PASS: student-local-only
+      RABBITMQ_DEFAULT_VHOST: learning
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: course
+      POSTGRES_USER: course
+      POSTGRES_PASSWORD: course-local-only
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U course -d course"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  web:
+    <<: *app
+    command: ["sh", "-c", "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000 --noreload"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  worker:
+    <<: *app
+    command: ["celery", "-A", "config", "worker", "--loglevel=INFO", "--pool=solo", "-Q", "celery"]
+    depends_on:
+      web:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+volumes:
+  rabbitmq-data:
+  postgres-data:

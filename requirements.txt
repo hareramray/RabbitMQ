@@ -1,0 +1,8 @@
+-r requirements-runtime.txt
+aio-pika>=9.5,<10
+jupyterlab>=4.4,<5
+ipykernel>=6.30,<8
+nbformat>=5.10,<6
+nbclient>=0.10,<1
+pytest>=8.4,<10
+PyYAML>=6,<7
